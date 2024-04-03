@@ -1,31 +1,17 @@
 #pragma once
 #include <DirectX/d3d11.h>
-#pragma comment(lib, "d3d11.lib")
 
-LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 void inputHandler();
+LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+#define clearVariable(x) if (x) { x->Release(); x = nullptr; delete x;}
 
-#define HOOK(FuncName, ReturnType, ...) \
-    typedef ReturnType(APIENTRY* FuncName##Func)(__VA_ARGS__); \
-    FuncName##Func o##FuncName = nullptr;
+typedef HRESULT(WINAPI* Present)(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags);
+typedef void(WINAPI* DrawInstanced)(ID3D11DeviceContext* pContext, UINT VertexCountPerInstance, UINT InstanceCount, UINT StartVertexLocation, UINT StartInstanceLocation);
+typedef void(WINAPI* DrawIndexedInstanced)(ID3D11DeviceContext* pContext, UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation, INT BaseVertexLocation, UINT StartInstanceLocation);
 
-typedef HRESULT(WINAPI* Present)(IDXGISwapChain*, UINT, UINT);
-typedef HRESULT(WINAPI* Draw)(ID3D11DeviceContext*, UINT, UINT);
-typedef HRESULT(WINAPI* DrawIndexedPrimitive)(ID3D11DeviceContext*, UINT, UINT, INT);
-typedef HRESULT(WINAPI* DrawIndexedInstanced)(ID3D11DeviceContext*, UINT, UINT, UINT, INT, UINT);
-typedef HRESULT(WINAPI* SetShaderResources)(ID3D11DeviceContext*, UINT, UINT, ID3D11ShaderResourceView* const*);
-typedef HRESULT(WINAPI* SetRenderTargets)(ID3D11DeviceContext*, UINT, ID3D11RenderTargetView* const*, ID3D11DepthStencilView*);
-typedef HRESULT(WINAPI* ResizeBuffers)(IDXGISwapChain*, UINT, UINT, UINT, DXGI_FORMAT, UINT);
-typedef HRESULT(WINAPI* CreateQuery)(ID3D11Device*, const D3D11_QUERY_DESC*, ID3D11Query**);
-
-HOOK(Present, HRESULT, IDXGISwapChain*, UINT, UINT)
-HOOK(Draw, HRESULT, ID3D11DeviceContext*, UINT, UINT)
-HOOK(DrawIndexedPrimitive, HRESULT, ID3D11DeviceContext*, UINT, UINT, INT)
-HOOK(DrawIndexedInstanced, HRESULT, ID3D11DeviceContext*, UINT, UINT, UINT, INT, UINT)
-HOOK(SetShaderResources, HRESULT, ID3D11DeviceContext*, UINT, UINT, ID3D11ShaderResourceView* const*)
-HOOK(SetRenderTargets, HRESULT, ID3D11DeviceContext*, UINT, ID3D11RenderTargetView* const*, ID3D11DepthStencilView*)
-HOOK(ResizeBuffers, HRESULT, IDXGISwapChain*, UINT, UINT, UINT, DXGI_FORMAT, UINT)
-HOOK(CreateQuery, HRESULT, ID3D11Device*, const D3D11_QUERY_DESC*, ID3D11Query**)
+Present oPresent = nullptr;
+DrawInstanced oDrawInstanced = nullptr;
+DrawIndexedInstanced oDrawIndexedInstanced = nullptr;
 
 /*D3D11 Methods Table :
 [0] QueryInterface

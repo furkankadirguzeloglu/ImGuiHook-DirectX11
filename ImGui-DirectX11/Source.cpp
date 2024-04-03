@@ -1,11 +1,11 @@
 #include <iostream>
 #include <Windows.h>
 #include "Hooks.hpp"
+#include <DirectX/d3d11.h>
+#include <Detours/detours.h>
 #include <ImGui/imgui.h>
 #include <ImGui/imgui_impl_dx11.h>
 #include <ImGui/imgui_impl_win32.h>
-#include <DirectX/d3d11.h>
-#include <Detours/detours.h>
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "detours.lib")
 
@@ -15,7 +15,7 @@ HWND hWindow = NULL;
 bool isInitialized = false;
 bool isMenuVisible = true;
 
-HRESULT APIENTRY hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags) {
+HRESULT WINAPI hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags) {
     static ID3D11Device* pDevice = nullptr;
     static ID3D11DeviceContext* pDeviceContext = nullptr;
 
@@ -37,13 +37,14 @@ HRESULT APIENTRY hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT F
         pSwapChain->GetDesc(&swapChainDesc);
         hWindow = swapChainDesc.OutputWindow;
 
-        if (hWindow) {
-            SetWindowLongPtr(hWindow, GWLP_WNDPROC, (LONG_PTR)WndProc);
+        if (hWindow) {   
             ImGui_ImplWin32_Init(hWindow);
             ImGui_ImplDX11_Init(pDevice, pDeviceContext);
+            ImGui_ImplDX11_CreateDeviceObjects();
+            SetWindowLongPtr(hWindow, GWLP_WNDPROC, (LONG_PTR)WndProc);
             isInitialized = true;
         }
-    }
+    }  
 
     if (GetAsyncKeyState(VK_INSERT) & 1) {
         isMenuVisible = !isMenuVisible;
@@ -65,41 +66,21 @@ HRESULT APIENTRY hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT F
     return oPresent(pSwapChain, SyncInterval, Flags);
 }
 
-HRESULT APIENTRY hkDraw(ID3D11DeviceContext* pDeviceContext, UINT VertexCount, UINT StartVertexLocation) {
-    return oDraw(pDeviceContext, VertexCount, StartVertexLocation);
+void WINAPI hkDrawInstanced(ID3D11DeviceContext* pContext, UINT VertexCountPerInstance, UINT InstanceCount, UINT StartVertexLocation, UINT StartInstanceLocation) {
+    return oDrawInstanced(pContext, VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation);
 }
 
-HRESULT APIENTRY hkDrawIndexedPrimitive(ID3D11DeviceContext* pDeviceContext, UINT IndexCount, UINT StartIndexLocation, INT BaseVertexLocation) {
-    return oDrawIndexedPrimitive(pDeviceContext, IndexCount, StartIndexLocation, BaseVertexLocation);
-}
-
-HRESULT APIENTRY hkDrawIndexedInstanced(ID3D11DeviceContext* pDeviceContext, UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation, INT BaseVertexLocation, UINT StartInstanceLocation) {
-    return oDrawIndexedInstanced(pDeviceContext, IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
-}
-
-HRESULT APIENTRY hkSetShaderResources(ID3D11DeviceContext* pDeviceContext, UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView* const* ppShaderResourceViews) {
-    return oSetShaderResources(pDeviceContext, StartSlot, NumViews, ppShaderResourceViews);
-}
-
-HRESULT APIENTRY hkSetRenderTargets(ID3D11DeviceContext* pDeviceContext, UINT NumViews, ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView) {
-    return oSetRenderTargets(pDeviceContext, NumViews, ppRenderTargetViews, pDepthStencilView);
-}
-
-HRESULT APIENTRY hkResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags) {
-    return oResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
-}
-
-HRESULT APIENTRY hkCreateQuery(ID3D11Device* pDevice, const D3D11_QUERY_DESC* pQueryDesc, ID3D11Query** ppQuery) {
-    return oCreateQuery(pDevice, pQueryDesc, ppQuery);
+void WINAPI hkDrawIndexedInstanced(ID3D11DeviceContext* pContext, UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation, INT BaseVertexLocation, UINT StartInstanceLocation) {
+    return oDrawIndexedInstanced(pContext, IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
 }
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (isInitialized && isMenuVisible && ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam)) {
+LRESULT WINAPI WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (isInitialized && isMenuVisible) {
+        ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
         return TRUE;
     }
-
-    switch (msg) {
+    switch (uMsg) {
     case WM_DESTROY:
         PostQuitMessage(0);
         break;
@@ -107,8 +88,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         TerminateProcess(hProcess, 0);
         break;
     }
-
-    return DefWindowProc(hWnd, msg, wParam, lParam);
+    return DefWindowProc(hWnd, uMsg, wParam, lParam);
 }
 
 void inputHandler() {
@@ -130,23 +110,21 @@ DWORD WINAPI initializeHook(LPVOID lpParam) {
         return FALSE;
     }
 
-    ID3D11Device* pDevice = nullptr;
-    ID3D11DeviceContext* pContext = NULL;
     IDXGISwapChain* pSwapChain = nullptr;
+    ID3D11Device* pDevice = nullptr;
+    ID3D11DeviceContext* pContext = nullptr;
 
-    WNDCLASSEXA wc = { sizeof(WNDCLASSEX), CS_CLASSDC, DefWindowProc, 0L, 0L, GetModuleHandleA(NULL), NULL, NULL, NULL, NULL, "DX", NULL };
-    RegisterClassExA(&wc);
-    HWND hWnd = CreateWindowA("DX", NULL, WS_OVERLAPPEDWINDOW, 100, 100, 300, 300, NULL, NULL, wc.hInstance, NULL);
+    HWND hWnd;
+    WNDCLASSEXA wc = { sizeof(WNDCLASSEX), CS_CLASSDC, DefWindowProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, "DX", NULL };
+    if (!(RegisterClassEx(&wc) && (hWnd = CreateWindow("DX", NULL, WS_OVERLAPPEDWINDOW, 0, 0, 0, 0, NULL, NULL, wc.hInstance, NULL)) != NULL)) {
+        return FALSE;
+    }
 
     D3D_FEATURE_LEVEL requestedFeatureLevels[] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1 };
     D3D_FEATURE_LEVEL obtainedLevel;
     DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
     swapChainDesc.BufferCount = 2;
-    swapChainDesc.BufferDesc.Width = 0;
-    swapChainDesc.BufferDesc.Height = 0;
     swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    swapChainDesc.BufferDesc.RefreshRate.Numerator = 60;
-    swapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
     swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
     swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     swapChainDesc.OutputWindow = hWnd;
@@ -169,44 +147,41 @@ DWORD WINAPI initializeHook(LPVOID lpParam) {
 #endif
 
     oPresent = (Present)vTable[8];
-    oDrawIndexedPrimitive = (DrawIndexedPrimitive)vTable[73];
-    oDraw = (Draw)vTable[82];
-    oSetShaderResources = (SetShaderResources)vTable[70];
-    oSetRenderTargets = (SetRenderTargets)vTable[94];
+    oDrawInstanced = (DrawInstanced)vTable[82];
+    oDrawIndexedInstanced = (DrawIndexedInstanced)vTable[81];
 
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(&(LPVOID&)oPresent, (PBYTE)hkPresent);
-    DetourAttach(&(LPVOID&)oDrawIndexedPrimitive, (PBYTE)hkDrawIndexedPrimitive);
-    DetourAttach(&(LPVOID&)oDraw, (PBYTE)hkDraw);
-    DetourAttach(&(LPVOID&)oSetShaderResources, (PBYTE)hkSetShaderResources);
-    DetourAttach(&(LPVOID&)oSetRenderTargets, (PBYTE)hkSetRenderTargets);
+    DetourAttach(&(LPVOID&)oDrawInstanced, (PBYTE)hkDrawInstanced);
+    DetourAttach(&(LPVOID&)oDrawIndexedInstanced, (PBYTE)hkDrawIndexedInstanced);
     DetourTransactionCommit();
 
-    pDevice->Release();
-    pContext->Release();
-    pSwapChain->Release();
+    if (hWnd) {
+        DestroyWindow(hWnd);
+        UnregisterClass("DX", wc.hInstance);
+        hWnd = nullptr;
+    }
+    clearVariable(pSwapChain);
+    clearVariable(pDevice);
+    clearVariable(pContext);
     return TRUE;
 }
 
 BOOL WINAPI DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
     switch (fdwReason) {
     case DLL_PROCESS_ATTACH:
-        hThread = CreateThread(NULL, 0, initializeHook, NULL, 0, NULL);
-        if (!hThread) {
+        if (!(hThread = CreateThread(NULL, 0, initializeHook, NULL, 0, NULL))){
             return FALSE;
         }
         DisableThreadLibraryCalls(hModule);
         break;
     case DLL_PROCESS_DETACH:
-        if (hThread) {
-            CloseHandle(hThread);
-            hThread = NULL;
+        if (isInitialized) {
+            ImGui_ImplDX11_Shutdown();
+            ImGui_ImplWin32_Shutdown();
+            ImGui::DestroyContext();
         }
-
-        ImGui_ImplDX11_Shutdown();
-        ImGui_ImplWin32_Shutdown();
-        ImGui::DestroyContext();
         break;
     }
     return TRUE;
